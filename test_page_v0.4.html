@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Advanced Budget Calculator</title>
+<style>
+body { font-family: Arial; max-width: 1000px; margin: auto; }
+.row { display: flex; gap: 10px; margin-bottom: 10px; }
+input, select, button { padding: 6px; }
+.section { margin-top: 30px; }
+.item { display: flex; gap: 10px; margin-bottom: 6px; }
+table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+td, th { border: 1px solid #ccc; padding: 6px; text-align: right; }
+th { background: #eee; }
+</style>
+</head>
+<body>
+
+<h1>Расширенный калькулятор бюджета</h1>
+
+<div class="section">
+<h2>Доход</h2>
+<div class="row">
+<input id="salaryValue" type="number" value="100000">
+<select id="salaryType">
+<option value="monthly">месяц</option>
+<option value="daily">день</option>
+<option value="weekly">неделя</option>
+<option value="yearly">год</option>
+</select>
+<select id="salaryMode">
+<option value="calendar">calendar</option>
+<option value="fixed">fixed</option>
+</select>
+</div>
+</div>
+
+<div class="section">
+<h2>Доп. доходы</h2>
+<div id="incomes"></div>
+<button onclick="addIncome()">+ доход</button>
+</div>
+
+<div class="section">
+<h2>Траты</h2>
+<div id="expenses"></div>
+<button onclick="addExpense()">+ трата</button>
+</div>
+
+<div class="section">
+<h2>Накопительный счёт</h2>
+<div class="row">
+<input id="savingsMonthly" type="number" placeholder="взнос/мес (10000)">
+<input id="savingsRate" type="number" placeholder="% годовых (10)">
+<input id="savingsMonths" type="number" placeholder="месяцев (12)">
+</div>
+</div>
+
+<div class="section">
+<h2>Результат</h2>
+<table>
+<thead>
+<tr><th></th><th>Доход</th><th>Траты</th><th>Свободно</th></tr>
+</thead>
+<tbody id="result"></tbody>
+</table>
+</div>
+
+<div class="section">
+<button onclick="save()">💾 Сохранить</button>
+<button onclick="load()">📂 Загрузить</button>
+<button onclick="exportData()">⬇ Экспорт</button>
+<input type="file" onchange="importData(event)">
+</div>
+
+<script>
+// ---------- utils ----------
+function daysInMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+}
+
+function normToDay(v, type, dim, mode) {
+  if (!v) return 0;
+
+  switch(type) {
+    case "daily": return v;
+    case "weekly": return v/7;
+    case "monthly": return (mode==="fixed"? v/30 : v/dim);
+    case "yearly": return v/365;
+
+    case "one-time":
+      return v / dim; // распределяем на месяц
+
+    default: return 0;
+  }
+}
+
+// ---------- savings ----------
+function calcSavings(monthly, rate, months) {
+  let total = 0;
+  const r = rate/100/12;
+
+  for (let i=0;i<months;i++) {
+    total += monthly;
+    total *= (1+r);
+  }
+
+  return total;
+}
+
+// ---------- main ----------
+function calculate() {
+  const dim = daysInMonth();
+
+  const salary = {
+    value: +salaryValue.value,
+    type: salaryType.value
+  };
+
+  const mode = salaryMode.value;
+
+  const expenses = [...document.querySelectorAll(".expense")].map(e => ({
+    label: e.querySelector(".label").value,
+    value: +e.querySelector(".value").value,
+    type: e.querySelector(".type").value,
+    hidden: e.hiddenFlag
+  }));
+
+  const incomes = [...document.querySelectorAll(".income")].map(e => ({
+    label: e.querySelector(".label").value,
+    value: +e.querySelector(".value").value,
+    type: e.querySelector(".type").value,
+    hidden: e.hiddenFlag
+  }));
+
+  let income_day = normToDay(salary.value, salary.type, dim, mode);
+
+incomes
+  .filter(i=>!i.hidden)
+  .forEach(i=>{
+    income_day += normToDay(i.value, i.type, dim, "calendar");
+  });
+
+const expenses_day = expenses
+  .filter(e=>!e.hidden)
+  .reduce((s,e)=> s + normToDay(e.value, e.type, dim, "calendar"),0);
+
+  // savings
+  const savingsTotal = calcSavings(
+    +savingsMonthly.value,
+    +savingsRate.value,
+    +savingsMonths.value
+  );
+
+  const savingsMonthlyIncome = savingsTotal / (+savingsMonths.value || 1);
+
+  const savings_day = savingsMonthlyIncome / dim;
+
+  const final_income_day = income_day + savings_day;
+
+  const free_day = final_income_day - expenses_day;
+
+  const result = {
+    day: {income: final_income_day, expenses: expenses_day, free: free_day},
+    week: scale(7),
+    month: scale(dim),
+    year: scale(365)
+  };
+
+  function scale(n){
+    return {
+      income: final_income_day*n,
+      expenses: expenses_day*n,
+      free: free_day*n
+    };
+  }
+
+  render(result);
+}
+
+// ---------- UI ----------
+function render(r){
+  result.innerHTML = "";
+  ["day","week","month","year"].forEach(k=>{
+    result.innerHTML += `
+    <tr>
+      <td>${k}</td>
+      <td>${round(r[k].income)}</td>
+      <td>${round(r[k].expenses)}</td>
+      <td>${round(r[k].free)}</td>
+    </tr>`;
+  });
+}
+
+function round(v){ return Math.round(v*100)/100; }
+
+function setupItem(el){
+  el.hiddenFlag = false;
+
+  const toggle = el.querySelector(".toggle");
+
+  toggle.onclick = () => {
+    el.hiddenFlag = !el.hiddenFlag;
+    toggle.style.opacity = el.hiddenFlag ? 0.3 : 1;
+    calculate();
+  };
+
+  el.querySelectorAll("input,select").forEach(i=>i.oninput=calculate);
+}
+
+function addExpense(){
+  const d=document.createElement("div");
+  d.className="item expense";
+  d.innerHTML=`
+  <input class="label" placeholder="метка">
+  <input class="value" type="number">
+  <select class="type">
+    <option value="daily">day</option>
+    <option value="weekly">week</option>
+    <option value="monthly" selected>month</option>
+    <option value="yearly">year</option>
+    <option value="one-time">one-time</option>
+  </select>
+  <button class="toggle">👁</button>
+  <button onclick="this.parentNode.remove();calculate()">x</button>`;
+  
+  setupItem(d);
+  expenses.appendChild(d);
+}
+
+function addIncome(){
+  const d=document.createElement("div");
+  d.className="item income";
+  d.innerHTML=`
+  <input class="label" placeholder="метка">
+  <input class="value" type="number">
+  <select class="type">
+    <option value="daily">day</option>
+    <option value="weekly">week</option>
+    <option value="monthly" selected>month</option>
+    <option value="yearly">year</option>
+    <option value="one-time">one-time</option>
+  </select>
+  <button class="toggle">👁</button>
+  <button onclick="this.parentNode.remove();calculate()">x</button>`;
+  
+  setupItem(d);
+  incomes.appendChild(d);
+}
+
+function bind(el){
+  el.querySelectorAll("input,select").forEach(i=>i.oninput=calculate);
+}
+
+// ---------- storage ----------
+function save(){
+  const data = collect();
+  localStorage.setItem("budget", JSON.stringify(data));
+}
+
+function load(){
+  const data = JSON.parse(localStorage.getItem("budget")||"{}");
+  apply(data);
+}
+
+function exportData(){
+  const data = JSON.stringify(collect());
+  const blob = new Blob([data]);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "budget.json";
+  a.click();
+}
+
+function importData(e){
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  reader.onload = ()=>apply(JSON.parse(reader.result));
+  reader.readAsText(file);
+}
+
+function collect(){
+  return {
+    salaryValue: salaryValue.value,
+    salaryType: salaryType.value,
+    salaryMode: salaryMode.value,
+    expenses: [...document.querySelectorAll(".expense")].map(e=>({
+      value: e.querySelector(".value").value,
+      type: e.querySelector(".type").value
+    })),
+    incomes: [...document.querySelectorAll(".income")].map(e=>({
+      value: e.querySelector(".value").value,
+      type: e.querySelector(".type").value
+    })),
+    savings: {
+      monthly: savingsMonthly.value,
+      rate: savingsRate.value,
+      months: savingsMonths.value
+    }
+  };
+}
+
+function apply(data){
+  if(!data) return;
+
+  salaryValue.value = data.salaryValue || "";
+  salaryType.value = data.salaryType || "monthly";
+  salaryMode.value = data.salaryMode || "calendar";
+
+  expenses.innerHTML="";
+  (data.expenses||[]).forEach(e=>{
+    addExpense();
+    const el = expenses.lastChild;
+    el.querySelector(".value").value = e.value;
+    el.querySelector(".type").value = e.type;
+  });
+
+  incomes.innerHTML="";
+  (data.incomes||[]).forEach(i=>{
+    addIncome();
+    const el = incomes.lastChild;
+    el.querySelector(".value").value = i.value;
+    el.querySelector(".type").value = i.type;
+  });
+
+  if(data.savings){
+    savingsMonthly.value = data.savings.monthly;
+    savingsRate.value = data.savings.rate;
+    savingsMonths.value = data.savings.months;
+  }
+  el.querySelector(".label").value = e.label;
+  el.hiddenFlag = e.hidden;
+  el.querySelector(".toggle").style.opacity = e.hidden ? 0.3 : 1;
+  calculate();
+}
+
+// init
+document.querySelectorAll("input,select").forEach(i=>i.oninput=calculate);
+addExpense();
+addIncome();
+calculate();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Budget Pro</title>
+<style>
+body { font-family: Arial; max-width: 1100px; margin:auto; }
+.section { margin-top:30px; }
+.item { display:flex; gap:8px; margin-bottom:6px; align-items:center; }
+input, select, button { padding:5px; }
+.eye { cursor:pointer; font-size:18px; }
+.disabled { opacity:0.4; }
+table { border-collapse:collapse; width:100%; margin-top:20px; }
+td, th { border:1px solid #ccc; padding:6px; text-align:right; }
+th { background:#eee; }
+</style>
+</head>
+<body>
+
+<h1>Budget Pro</h1>
+
+<div class="section">
+<h2>Доход</h2>
+<div class="item">
+<input id="salaryValue" type="number" value="100000">
+<select id="salaryType">
+<option value="monthly">month</option>
+<option value="daily">day</option>
+<option value="weekly">week</option>
+<option value="yearly">year</option>
+</select>
+<select id="salaryMode">
+<option value="calendar">calendar</option>
+<option value="fixed">fixed</option>
+</select>
+</div>
+</div>
+
+<div class="section">
+<h2>Доходы</h2>
+<div id="incomes"></div>
+<button onclick="addIncome()">+ доход</button>
+</div>
+
+<div class="section">
+<h2>Траты</h2>
+<div id="expenses"></div>
+<button onclick="addExpense()">+ трата</button>
+</div>
+
+<div class="section">
+<h2>Результат</h2>
+<table>
+<thead>
+<tr><th></th><th>Доход</th><th>Траты</th><th>Свободно</th></tr>
+</thead>
+<tbody id="result"></tbody>
+</table>
+</div>
+
+<script>
+// --- utils ---
+function dim(){
+  const d=new Date();
+  return new Date(d.getFullYear(), d.getMonth()+1,0).getDate();
+}
+
+function norm(v,type,days,mode){
+  if(!v) return 0;
+  switch(type){
+    case "daily": return v;
+    case "weekly": return v/7;
+    case "monthly": return mode==="fixed"?v/30:v/days;
+    case "yearly": return v/365;
+    default: return 0;
+  }
+}
+
+// --- core ---
+function calculate(){
+  const days = dim();
+
+  const salary = {
+    value:+salaryValue.value,
+    type:salaryType.value
+  };
+
+  const mode = salaryMode.value;
+
+  const incomes = getItems("income");
+  const expenses = getItems("expense");
+
+  let income_day = norm(salary.value, salary.type, days, mode);
+
+  let once_income_month = 0;
+  let once_expense_month = 0;
+
+  incomes.forEach(i=>{
+    if(!i.enabled) return;
+
+    if(i.type==="once"){
+      once_income_month += i.value;
+    } else {
+      income_day += norm(i.value,i.type,days,"calendar");
+    }
+  });
+
+  let expenses_day = 0;
+
+  expenses.forEach(e=>{
+    if(!e.enabled) return;
+
+    if(e.type==="once"){
+      once_expense_month += e.value;
+    } else {
+      expenses_day += norm(e.value,e.type,days,"calendar");
+    }
+  });
+
+  const free_day = income_day - expenses_day;
+
+  const result = {
+    day:{
+      income:income_day,
+      expenses:expenses_day,
+      free:free_day
+    },
+    week:scale(7),
+    month:{
+      income:scale(days).income + once_income_month,
+      expenses:scale(days).expenses + once_expense_month,
+      free:scale(days).free + once_income_month - once_expense_month
+    },
+    year:{
+      income:scale(365).income + once_income_month,
+      expenses:scale(365).expenses + once_expense_month,
+      free:scale(365).free + once_income_month - once_expense_month
+    }
+  };
+
+  function scale(n){
+    return {
+      income:income_day*n,
+      expenses:expenses_day*n,
+      free:free_day*n
+    };
+  }
+
+  render(result);
+}
+
+// --- UI ---
+function render(r){
+  result.innerHTML="";
+  ["day","week","month","year"].forEach(k=>{
+    result.innerHTML+=`
+    <tr>
+      <td>${k}</td>
+      <td>${round(r[k].income)}</td>
+      <td>${round(r[k].expenses)}</td>
+      <td>${round(r[k].free)}</td>
+    </tr>`;
+  });
+}
+
+function round(v){ return Math.round(v*100)/100; }
+
+// --- items ---
+function getItems(cls){
+  return [...document.querySelectorAll("."+cls)].map(el=>({
+    value:+el.querySelector(".value").value,
+    type:el.querySelector(".type").value,
+    label:el.querySelector(".label").value,
+    enabled:!el.classList.contains("disabled")
+  }));
+}
+
+function toggle(el){
+  el.parentNode.classList.toggle("disabled");
+  calculate();
+}
+
+function createItem(type){
+  const d=document.createElement("div");
+  d.className="item "+type;
+
+  d.innerHTML=`
+  <span class="eye" onclick="toggle(this)">👁</span>
+  <input class="label" placeholder="метка">
+  <input class="value" type="number">
+  <select class="type">
+    <option value="daily">day</option>
+    <option value="weekly">week</option>
+    <option value="monthly" selected>month</option>
+    <option value="yearly">year</option>
+    <option value="once">once</option>
+  </select>
+  <button onclick="this.parentNode.remove();calculate()">x</button>
+  `;
+
+  d.querySelectorAll("input,select").forEach(i=>i.oninput=calculate);
+  return d;
+}
+
+function addIncome(){
+  incomes.appendChild(createItem("income"));
+}
+
+function addExpense(){
+  expenses.appendChild(createItem("expense"));
+}
+
+// init
+document.querySelectorAll("input,select").forEach(i=>i.oninput=calculate);
+addIncome();
+addExpense();
+calculate();
+</script>
+
+</body>
+</html>
