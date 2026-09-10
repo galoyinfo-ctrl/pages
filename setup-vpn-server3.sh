@@ -35,11 +35,17 @@ fi
 
 log() { echo -e "\n\033[1;32m==>\033[0m $1"; }
 
-RAND_PASS() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20; }
-RAND_PATH() { tr -dc 'a-z0-9' </dev/urandom | head -c 12; }
+# NOTE: /dev/urandom never hits EOF, so piping it straight into `tr | head -c N`
+# makes `tr` die from SIGPIPE the instant `head` closes the pipe early - under
+# `set -e -o pipefail` that aborts the whole script. Reading a bounded chunk
+# with the first `head -c` avoids that: tr then gets a finite input and exits
+# cleanly on real EOF.
+RAND_PASS() { head -c 300 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 20; }
+RAND_PATH()  { head -c 300 /dev/urandom | tr -dc 'a-z0-9' | head -c 12; }
+RAND_SUFFIX() { head -c 300 /dev/urandom | tr -dc 'a-z0-9' | head -c 6; }
 
 USER_PASSWORD="$(RAND_PASS)"
-PANEL_USERNAME="admin_$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)"
+PANEL_USERNAME="admin_$(RAND_SUFFIX)"
 PANEL_PASSWORD="$(RAND_PASS)"
 PANEL_WEBPATH="/$(RAND_PATH)/"
 
